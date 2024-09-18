@@ -1,0 +1,25 @@
+# Toy example for simple AIG
+.model toy
+.inputs a b c d
+.outputs out
+
+.names a b n1
+11 1
+
+.names b c n2
+11 1
+
+.names c d n3
+11 1
+
+.names n1 n2 n4
+11 1
+
+.names n2 n3 n5
+11 1
+
+# Node 6 = AND(n4, n5)
+.names n4 n5 out
+11 1
+
+.end
