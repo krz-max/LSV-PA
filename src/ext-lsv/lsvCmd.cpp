@@ -4,8 +4,10 @@
 
 #include <vector>
 #include <algorithm>
-#include <unordered_map>
-
+#include <map>
+#include <set>
+#include <iostream>
+using namespace std;
 typedef std::vector<int> Cut;
 
 // Custom function to merge two sorted vectors
@@ -96,15 +98,71 @@ usage:
   return 1;
 }
 
+Cut removeRedundant(int nodeId, const Cut& cut, const map<int, set<int>>& relatedPIs) {
+  Cut result;
+  map<int, bool> usedPIs;
+  const set<int>& relatedPI = relatedPIs.at(nodeId);
+  for (int node : relatedPI) {
+    usedPIs[node] = false;
+  }
+
+  for (int node : cut) {
+    if(relatedPI.find(node) != relatedPI.end()) {
+      if (!usedPIs[node]) {
+        result.push_back(node);
+        usedPIs[node] = true;
+      }
+    } else {
+      // Check all pi used
+      const set<int> &relatedPII = relatedPIs.at(node);
+      bool allUsed = true;
+      for (int pi : relatedPII) {
+        if (!usedPIs[pi]) {
+          allUsed = false;
+          break;
+        }
+      }
+      if (!allUsed) {
+        result.push_back(node);
+      }
+    }
+  }
+  return result;
+}
+
 void Lsv_NtkPrintKFeasibleCuts(Abc_Ntk_t* pNtk, int k) {
-  std::unordered_map<int, std::vector<Cut>> nodeCuts;
+  std::map<int, std::vector<Cut>> nodeCuts;
 
   Abc_Obj_t* pObj;
   int i;
 
   // Enumerate cuts for each node in topological order
-  Abc_NtkForEachNode(pNtk, pObj, i) {
+  std::vector<std::pair<int, int>> PoFanInPairs;
+  std::vector<bool> isPI(Abc_NtkObjNumMax(pNtk), false);
+  /* 
+  cout << isPI.size() << endl;
+   */
+  std::map<int, set<int>> relatedPIs;
+  Abc_NtkForEachObj(pNtk, pObj, i) {
     int nodeId = Abc_ObjId(pObj);
+    // If is constant node
+    if (Abc_AigNodeIsConst(pObj)) {
+      // printf("Const Node %d\n", nodeId);
+      continue;
+    }
+    // If is primary input
+    if (Abc_ObjIsPi(pObj)) {
+      // printf("PI Node %d\n", nodeId);
+      nodeCuts[nodeId] = {{nodeId}};
+      isPI[nodeId] = true;
+      relatedPIs[nodeId].insert(nodeId);
+      continue;
+    }
+    // If is primary output
+    if (Abc_ObjIsPo(pObj)) {
+      PoFanInPairs.push_back({nodeId, Abc_ObjFaninId0(pObj)});
+      continue;
+    }
     std::vector<Cut>& cuts = nodeCuts[nodeId];
 
     // Trivial cut (the node itself)
@@ -116,6 +174,14 @@ void Lsv_NtkPrintKFeasibleCuts(Abc_Ntk_t* pNtk, int k) {
 
     int faninId0 = Abc_ObjId(pFanin0);
     int faninId1 = Abc_ObjId(pFanin1);
+    // Add relatedPIs of faninId0 to relatedPIs[nodeId]
+    for (int relatedPI : relatedPIs[faninId0]) {
+      relatedPIs[nodeId].insert(relatedPI);
+    }
+    // Add relatedPIs of faninId1 to relatedPIs[nodeId]
+    for (int relatedPI : relatedPIs[faninId1]) {
+      relatedPIs[nodeId].insert(relatedPI);
+    }
 
     std::vector<Cut>& faninCuts0 = nodeCuts[faninId0];
     std::vector<Cut>& faninCuts1 = nodeCuts[faninId1];
@@ -124,6 +190,7 @@ void Lsv_NtkPrintKFeasibleCuts(Abc_Ntk_t* pNtk, int k) {
     for (const Cut& cut0 : faninCuts0) {
       for (const Cut& cut1 : faninCuts1) {
         Cut mergedCut = mergeSortedCuts(cut0, cut1);
+        mergedCut = removeRedundant(nodeId, mergedCut, relatedPIs);
         if (mergedCut.size() <= k) {
           cuts.push_back(mergedCut);
         }
@@ -143,16 +210,47 @@ void Lsv_NtkPrintKFeasibleCuts(Abc_Ntk_t* pNtk, int k) {
     cuts.erase(std::remove_if(cuts.begin(), cuts.end(),
       [k](const Cut& cut) { return cut.size() > k; }),
       cuts.end());
-
-    // Print cuts for this node
+    // printf("End of Node %d\n", nodeId-1);
+  }
+  /* 
+  for (const auto& [poId, faninId] : PoFanInPairs) {
+    nodeCuts[faninId].erase(nodeCuts[faninId].begin()); // Erase direct fanIn of PO
+    nodeCuts[poId] = nodeCuts[faninId];
+    nodeCuts[poId].push_back({poId});
+    sort(nodeCuts[poId].begin(), nodeCuts[poId].end(),
+      [](const Cut& a, const Cut& b) { 
+        return a.size() < b.size() || (a.size() == b.size() && a < b); 
+      }
+    );
+    relatedPIs[poId] = relatedPIs[faninId];
+    nodeCuts.erase(faninId);
+  }
+   */
+  // // fp
+  // string fname = "toy2_" + to_string(k) + ".txt";
+  // FILE *fp = fopen(fname.c_str(), "w");
+  // Print all cuts
+  for (const auto& [nodeId, cuts] : nodeCuts) {
+    /* 
+    cout << "Related PIs: " << endl;
+    for (int relatedPI : relatedPIs[nodeId]) {
+      cout << relatedPI << " ";
+    }
+    cout << endl;
+     */
     for (const Cut& cut : cuts) {
+      // write to file
+      // fprintf(fp, "%d:", nodeId);
       printf("%d:", nodeId);
       for (int cutNode : cut) {
+        // fprintf(fp, " %d", cutNode);
         printf(" %d", cutNode);
       }
+      // fprintf(fp, "\n");
       printf("\n");
     }
   }
+  // fclose(fp);
 }
 
 // Add this function after Lsv_CommandPrintNodes

@@ -1,6 +1,6 @@
 .model comp
 .inputs x0 x1 x2 x3 x4
-.outputs y2 y1 y0
+.outputs y3 y2 y1 y0
 
 # Truth table for y0 (least significant bit)
 .names x0 x1 x2 x3 x4 y0
@@ -52,5 +52,11 @@
 11101 1
 11110 1
 11111 1
+
+.names x0 x1 x2 y3
+111 1
+110 1
+101 1
+100 1
 
 .end
